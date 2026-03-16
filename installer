@@ -1,0 +1,96 @@
+#!/bin/bash
+# YAG NVIDIA Driver Installer for Astra Linux 1.7
+# by Arseniy Y.
+
+# Проверка root
+if [[ $EUID -ne 0 ]]; then
+    echo "Ошибка: скрипт должен запускаться от root (используйте sudo)." >&2
+    exit 1
+fi
+
+# ASCII-логотип YAG (такой же, как в диагностическом скрипте)
+cat <<'EOF'
+
+██╗   ██╗ █████╗  ██████╗ 
+╚██╗ ██╔╝██╔══██╗██╔════╝ 
+ ╚████╔╝ ███████║██║  ███╗
+  ╚██╔╝  ██╔══██║██║   ██║
+   ██║   ██║  ██║╚██████╔╝
+   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ 
+installer by Arseniy Y.
+
+EOF
+
+# Определение архитектуры (только x86_64)
+ARCH=$(uname -m)
+if [[ "$ARCH" != "x86_64" ]]; then
+    echo "Ошибка: скрипт поддерживает только архитектуру x86_64." >&2
+    exit 1
+fi
+
+# Путь к скрипту (для последующего удаления папки)
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || echo "${BASH_SOURCE[0]:-$0}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+
+# 1. Очистка /etc/apt/sources.list и запись репозиториев Astra
+echo "Настройка репозиториев Astra Linux 1.7..."
+cat > /etc/apt/sources.list <<EOF
+deb https://dl.astralinux.ru/astra/stable/1.7_x86-64/repository-main/     1.7_x86-64 main contrib non-free
+deb https://dl.astralinux.ru/astra/stable/1.7_x86-64/repository-update/   1.7_x86-64 main contrib non-free
+deb https://dl.astralinux.ru/astra/stable/1.7_x86-64/repository-base/     1.7_x86-64 main contrib non-free
+deb https://dl.astralinux.ru/astra/stable/1.7_x86-64/repository-extended/ 1.7_x86-64 main contrib non-free
+EOF
+
+# 2. Обновление списка пакетов
+echo "Обновление списка пакетов..."
+apt update
+if [[ $? -ne 0 ]]; then
+    echo "Ошибка при apt update. Проверьте подключение к интернету и репозитории." >&2
+    exit 1
+fi
+
+# 3. Проверка наличия whiptail (для меню)
+if ! command -v whiptail &>/dev/null; then
+    echo "whiptail не найден, устанавливаем..."
+    apt install -y whiptail
+fi
+
+# 4. Меню выбора версии драйвера
+# Список версий от 510 до 580
+VERSIONS=(510 520 530 540 550 560 570 580)
+MENU_ITEMS=()
+for ver in "${VERSIONS[@]}"; do
+    MENU_ITEMS+=("$ver" "Драйвер NVIDIA $ver")
+done
+
+# Запуск whiptail (высота, ширина, количество пунктов)
+DRIVER_VERSION=$(whiptail --title "Выбор драйвера NVIDIA" \
+    --menu "Выберите версию драйвера для установки (используйте стрелки и Enter):" \
+    20 60 8 "${MENU_ITEMS[@]}" 3>&1 1>&2 2>&3)
+
+if [[ -z "$DRIVER_VERSION" ]]; then
+    echo "Установка отменена."
+    exit 0
+fi
+
+echo "Выбрана версия: $DRIVER_VERSION"
+
+# 5. Установка драйвера и nvidia-detect
+echo "Установка nvidia-driver-${DRIVER_VERSION} и nvidia-detect-${DRIVER_VERSION}..."
+apt install -y "nvidia-driver-${DRIVER_VERSION}" "nvidia-detect-${DRIVER_VERSION}"
+
+if [[ $? -ne 0 ]]; then
+    echo "Ошибка при установке пакетов. Проверьте доступность версии в репозиториях." >&2
+    exit 1
+fi
+
+echo "Драйвер успешно установлен."
+
+# 6. Удаление папки скрипта и перезагрузка
+echo "Скрипт самоуничтожится, и система будет перезагружена."
+cd / || exit 1
+rm -rf "$SCRIPT_DIR"
+
+echo "Перезагрузка через 5 секунд..."
+sleep 5
+reboot
