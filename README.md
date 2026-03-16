@@ -13,6 +13,6 @@
 ## Установка
 
 ```bash
-git clone https://github.com/eoslinux/-RTX-ALSE17-510---580.git
+git clone https://github.com/eoslinux/driver-rtx-ALSE17.git
 cd -RTX-ALSE17-510---580
 sudo ./install-nvidia.sh
